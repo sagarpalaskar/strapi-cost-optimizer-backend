@@ -1,0 +1,65 @@
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+
+# Database Configuration (PostgreSQL)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_NAME=strapi_cost_optimizer
+
+# JWT Configuration
+JWT_SECRET=your-secret-key-change-this-in-production
+JWT_EXPIRES_IN=7d
+
+# Redis Configuration (for proxy JWT caching)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Strapi Configuration (Required for proxy user system)
+STRAPI_URL=http://localhost:1337
+
+# Strapi Role-Based API Tokens (RECOMMENDED for /api/* endpoints in Strapi 5.x)
+# Create in Strapi Admin Panel → Settings → API Tokens → Create new API Token
+# Set appropriate permissions for each role:
+#   - Admin: "Full access" token
+#   - Editor: "Full access" token (or custom permissions)
+#   - Author: "Full access" token (or custom permissions - can create/edit own content)
+#   - Viewer: "Read-only" token
+# 
+# If a role-specific token is not set, it will fallback to STRAPI_API_TOKEN or use admin JWT token
+
+# Super Admin API Token (Full access)
+STRAPI_API_TOKEN_ADMIN=your-admin-api-token-here
+
+# Editor API Token (Full access or custom permissions)
+STRAPI_API_TOKEN_EDITOR=your-editor-api-token-here
+
+# Author API Token (Full access or custom permissions - can create/edit own content)
+STRAPI_API_TOKEN_AUTHOR=your-author-api-token-here
+
+# Viewer API Token (Read-only recommended)
+STRAPI_API_TOKEN_VIEWER=your-viewer-readonly-api-token-here
+
+# Fallback API Token (used if role-specific token not set)
+STRAPI_API_TOKEN=your-api-token-here
+
+# Read-only API Token (fallback for viewer if STRAPI_API_TOKEN_VIEWER not set)
+STRAPI_API_TOKEN_READONLY=your-readonly-api-token-here
+
+# Strapi Admin Proxy Users (for /admin/* endpoints, fallback if API token not set)
+# IMPORTANT: These must be Strapi Admin users (not regular users)
+# Go to Strapi Admin Panel → Settings → Administrators → Create Administrator
+STRAPI_ADMIN_PROXY_EMAIL=admin_proxy@strapi.local
+STRAPI_ADMIN_PROXY_PASSWORD=AdminProxy123!
+STRAPI_EDITOR_PROXY_EMAIL=editor_proxy@strapi.local
+STRAPI_EDITOR_PROXY_PASSWORD=EditorProxy123!
+STRAPI_AUTHOR_PROXY_EMAIL=author_proxy@strapi.local
+STRAPI_AUTHOR_PROXY_PASSWORD=AuthorProxy123!
+STRAPI_VIEWER_PROXY_EMAIL=viewer_proxy@strapi.local
+STRAPI_VIEWER_PROXY_PASSWORD=ViewerProxy123!
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:3000
