@@ -315,51 +315,6 @@ export class ContentController {
     return { success: true };
   }
 
-  @Post(':contentType/duplicate/:id')
-  @Roles('admin', 'editor', 'author')
-  @ApiOperation({ summary: 'Duplicate content item' })
-  @ApiParam({ name: 'contentType', description: 'Content type name' })
-  @ApiParam({ name: 'id', description: 'Content item ID to duplicate' })
-  @ApiResponse({ status: 201, description: 'Content item duplicated successfully' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Author cannot duplicate others\' content' })
-  @ApiResponse({ status: 404, description: 'Content item not found' })
-  async duplicateContentItem(
-    @Param('contentType') contentType: string,
-    @Param('id') id: string,
-    @Request() req,
-  ) {
-    console.log(`[ContentController] POST ${req.url || `/api/${contentType}/duplicate/${id}`}`);
-    
-    // Exclude reserved paths
-    const reservedPaths = ['dashboard', 'auth', 'api-docs', 'health', 'swagger'];
-    if (reservedPaths.includes(contentType)) {
-      throw new NotFoundException(`Path '/api/${contentType}/duplicate/${id}' not found`);
-    }
-    
-    const userRole = req.user?.role || 'viewer';
-    const customUserId = req.user?.userId;
-    
-    // For author role, check if user owns this content
-    if (userRole.toLowerCase() === 'author' && customUserId) {
-      // Get original content item to find documentId or id for audit log lookup
-      let contentIdForCheck = id;
-      try {
-        const original = await this.contentService.getContentItem(contentType, id, userRole);
-        contentIdForCheck = original?.data?.documentId || original?.data?.id || id;
-      } catch (err) {
-        console.warn(`Could not get content item for ownership check, using id parameter: ${err}`);
-      }
-      
-      // Check ownership via audit log
-      const isOwner = await this.auditService.isContentOwner(String(contentIdForCheck), customUserId);
-      if (!isOwner) {
-        throw new ForbiddenException('You can only duplicate your own content');
-      }
-    }
-    
-    return this.contentService.duplicateContentItem(contentType, id, userRole);
-  }
-
   @Get(':contentType/:id/ownership')
   @ApiOperation({ summary: 'Check content ownership (for frontend)' })
   @ApiParam({ name: 'contentType', description: 'Content type name' })

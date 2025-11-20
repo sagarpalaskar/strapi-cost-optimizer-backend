@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ProxyUserService } from '../proxy/proxy-user.service';
 import { CreateContentTypeDto } from './dto/create-content-type.dto';
 
@@ -10,6 +10,51 @@ export class ContentService {
   constructor(
     private proxyUserService: ProxyUserService,
   ) { }
+
+  /**
+   * Extract error message and status code from Strapi error response
+   * Preserves original Strapi error messages and status codes
+   */
+  private extractStrapiError(error: any): { message: string; statusCode: number } {
+    if (error.response) {
+      const statusCode = error.response.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      const errorData = error.response.data;
+      
+      // Try to extract error message from various Strapi error formats
+      let message = 'An error occurred while processing your request';
+      
+      if (errorData?.error?.message) {
+        message = errorData.error.message;
+      } else if (errorData?.message) {
+        message = errorData.message;
+      } else if (errorData?.error) {
+        message = typeof errorData.error === 'string' ? errorData.error : JSON.stringify(errorData.error);
+      } else if (errorData?.data?.error?.message) {
+        message = errorData.data.error.message;
+      } else if (errorData?.data?.message) {
+        message = errorData.data.message;
+      } else if (typeof errorData === 'string') {
+        message = errorData;
+      } else if (error.response.statusText) {
+        message = error.response.statusText;
+      }
+      
+      return { message, statusCode };
+    } else if (error.message) {
+      return { message: error.message, statusCode: HttpStatus.INTERNAL_SERVER_ERROR };
+    } else {
+      return { message: 'An unexpected error occurred', statusCode: HttpStatus.INTERNAL_SERVER_ERROR };
+    }
+  }
+
+  /**
+   * Wrap Strapi errors in HttpException to preserve status codes and messages
+   */
+  private handleStrapiError(error: any, context?: string): never {
+    const { message, statusCode } = this.extractStrapiError(error);
+    const errorMessage = context ? `${context}: ${message}` : message;
+    throw new HttpException(errorMessage, statusCode);
+  }
 
   /**
    * Get plural name for a content type
@@ -68,17 +113,18 @@ export class ContentService {
   }
 
   async getContentTypes(userRole: string): Promise<any[]> {
-    // Directly call Strapi - throw error if fails
-    // Use /api/* endpoint first (works with API tokens from Settings → API Tokens)
-    // If it fails, throw error (no fallback)
-    const response = await this.proxyUserService.forwardRequestToStrapi(
-      'GET',
-      '/api/content-type-builder/content-types',
-      undefined,
-      userRole,
-    );
+    try {
+      // Directly call Strapi - throw error if fails
+      // Use /api/* endpoint first (works with API tokens from Settings → API Tokens)
+      // If it fails, throw error (no fallback)
+      const response = await this.proxyUserService.forwardRequestToStrapi(
+        'GET',
+        '/api/content-type-builder/content-types',
+        undefined,
+        userRole,
+      );
 
-    // Transform Strapi response to our format
+      // Transform Strapi response to our format
     // Strapi 5.x content-type-builder returns data in different format
     // Response might be: { data: [...] } or direct array
     let contentTypesArray = [];
@@ -180,12 +226,33 @@ export class ContentService {
       console.log('Successfully mapped all content types:', mappedContentTypes.length);
       return mappedContentTypes;
     } catch (error: any) {
+      // If it's already an HttpException, re-throw it
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error('Error in getContentTypes mapping:', {
         error: error.message,
         stack: error.stack,
         filteredCount: filteredContentTypes.length,
       });
-      throw new Error(`Failed to process content types: ${error.message}`);
+      // Check if it's a Strapi error
+      if (error.response) {
+        this.handleStrapiError(error, 'Failed to get content types');
+      } else {
+        throw new Error(`Failed to process content types: ${error.message}`);
+      }
+    }
+    } catch (error: any) {
+      // If it's already an HttpException, re-throw it
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      // Check if it's a Strapi error from the initial API call
+      if (error.response) {
+        this.handleStrapiError(error, 'Failed to get content types from Strapi');
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -249,8 +316,17 @@ export class ContentService {
         updatedAt: strapiType.updatedAt || contentType.updatedAt || new Date().toISOString(),
       };
     } catch (error: any) {
+      // If it's already an HttpException, re-throw it
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(`Error getting content type '${slug}':`, error.message);
-      throw new NotFoundException(`Content type '${slug}' not found: ${error.message}`);
+      // Check if it's a Strapi error
+      if (error.response) {
+        this.handleStrapiError(error, `Failed to get content type '${slug}'`);
+      } else {
+        throw new NotFoundException(`Content type '${slug}' not found: ${error.message}`);
+      }
     }
   }
 
@@ -311,11 +387,17 @@ export class ContentService {
         'admin', // Must use admin proxy user
       );
     } catch (error: any) {
-      // Re-throw with more context
-      const errorMessage = error?.response?.data?.error?.message
-        || error?.message
-        || 'Unknown error occurred';
-      throw new Error(`Failed to create content type in Strapi: ${errorMessage}`);
+      // If it's already an HttpException, re-throw it
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      // Re-throw with more context, preserving Strapi error
+      if (error.response) {
+        this.handleStrapiError(error, 'Failed to create content type in Strapi');
+      } else {
+        const errorMessage = error?.message || 'Unknown error occurred';
+        throw new Error(`Failed to create content type in Strapi: ${errorMessage}`);
+      }
     }
   }
 
@@ -449,15 +531,19 @@ export class ContentService {
     
     const url = `/api/${pluralName}?${queryParams.toString()}`;
 
-    // Directly call Strapi - throw error if fails
-    const response = await this.proxyUserService.forwardRequestToStrapi(
-      'GET',
-      url,
-      undefined,
-      userRole,
-    );
+    try {
+      // Directly call Strapi - throw error if fails
+      const response = await this.proxyUserService.forwardRequestToStrapi(
+        'GET',
+        url,
+        undefined,
+        userRole,
+      );
 
-    return response;
+      return response;
+    } catch (error: any) {
+      this.handleStrapiError(error, `Failed to get content items from ${contentType}`);
+    }
   }
 
   async getContentItem(contentType: string, id: string, userRole: string) {
@@ -515,8 +601,8 @@ export class ContentService {
           }
         }
       }
-      // Re-throw non-404 errors
-      throw error;
+      // Re-throw non-404 errors with proper error handling
+      this.handleStrapiError(error, `Failed to get content item ${id} from ${contentType}`);
     }
   }
 
@@ -524,53 +610,57 @@ export class ContentService {
     // Get the correct plural name for the content type (e.g., "studies" not "studys")
     const pluralName = await this.getPluralName(contentType, userRole);
     
-    // Directly call Strapi - throw error if fails
-    const response = await this.proxyUserService.forwardRequestToStrapi(
-      'POST',
-      `/api/${pluralName}`,
-      { data },
-      userRole,
-    );
+    try {
+      // Directly call Strapi - throw error if fails
+      const response = await this.proxyUserService.forwardRequestToStrapi(
+        'POST',
+        `/api/${pluralName}`,
+        { data },
+        userRole,
+      );
 
-    return response;
+      return response;
+    } catch (error: any) {
+      this.handleStrapiError(error, `Failed to create content item in ${contentType}`);
+    }
   }
 
   async updateContentItem(contentType: string, id: string, data: any, userRole: string) {
     // Get the correct plural name for the content type (e.g., "studies" not "studys")
     const pluralName = await this.getPluralName(contentType, userRole);
     
-    // Directly call Strapi - throw error if fails
-    const response = await this.proxyUserService.forwardRequestToStrapi(
-      'PUT',
-      `/api/${pluralName}/${id}`,
-      { data: data },
-      userRole,
-    );
+    try {
+      // Directly call Strapi - throw error if fails
+      const response = await this.proxyUserService.forwardRequestToStrapi(
+        'PUT',
+        `/api/${pluralName}/${id}`,
+        { data: data },
+        userRole,
+      );
 
-    return response;
+      return response;
+    } catch (error: any) {
+      this.handleStrapiError(error, `Failed to update content item ${id} in ${contentType}`);
+    }
   }
 
   async deleteContentItem(contentType: string, id: string, userRole: string) {
     // Get the correct plural name for the content type (e.g., "studies" not "studys")
     const pluralName = await this.getPluralName(contentType, userRole);
     
-    // Directly call Strapi - throw error if fails
-    await this.proxyUserService.forwardRequestToStrapi(
-      'DELETE',
-      `/api/${pluralName}/${id}`,
-      undefined,
-      userRole,
-    );
+    try {
+      // Directly call Strapi - throw error if fails
+      await this.proxyUserService.forwardRequestToStrapi(
+        'DELETE',
+        `/api/${pluralName}/${id}`,
+        undefined,
+        userRole,
+      );
 
-    return { success: true };
+      return { success: true };
+    } catch (error: any) {
+      this.handleStrapiError(error, `Failed to delete content item ${id} from ${contentType}`);
+    }
   }
 
-  async duplicateContentItem(contentType: string, id: string, userRole: string) {
-    // Get original item from Strapi
-    const original = await this.getContentItem(contentType, id, userRole);
-    const { id: _, createdAt, updatedAt, ...dataWithoutId } = original.data;
-
-    // Create duplicate in Strapi
-    return await this.createContentItem(contentType, dataWithoutId.attributes, userRole);
-  }
 }
