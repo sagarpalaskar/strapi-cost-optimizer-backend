@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CombinedAuthGuard } from './guards/combined-auth.guard';
 import { RolesGuard, Roles } from './guards/roles.guard';
 
 @ApiTags('Authentication')
@@ -32,7 +33,7 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(CombinedAuthGuard)
   @Get('me')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get current authenticated user' })
@@ -54,5 +55,29 @@ export class AuthController {
     console.log(`[AuthController] GET ${req.url || '/api/auth/users'}`);
     const users = await this.authService.getAllUsers();
     return { data: users };
+  }
+
+  @UseGuards(CombinedAuthGuard)
+  @Post('logout')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Logout user and destroy all sessions' })
+  @ApiResponse({ status: 200, description: 'User logged out successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async logout(@Request() req) {
+    console.log(`[AuthController] POST ${req.url || '/api/auth/logout'}`);
+    return this.authService.logout(req.user.userId);
+  }
+
+  @UseGuards(CombinedAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Get('sessions/stats')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get session statistics (admin only)' })
+  @ApiResponse({ status: 200, description: 'Session statistics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin only' })
+  async getSessionStats(@Request() req) {
+    console.log(`[AuthController] GET ${req.url || '/api/auth/sessions/stats'}`);
+    return this.authService.getSessionStats();
   }
 }

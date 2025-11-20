@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 // import Redis from 'ioredis'; // Commented out - will use Redis later
 import axios, { AxiosInstance } from 'axios';
+import { KeyVaultService } from '../keyvault/keyvault.service';
 
 interface ProxyUser {
   email: string; // Admin users use email for login
@@ -15,19 +16,14 @@ interface CachedJWT {
 }
 
 @Injectable()
-export class ProxyUserService {
+export class ProxyUserService implements OnModuleInit {
   private readonly logger = new Logger(ProxyUserService.name);
   private strapiClient: AxiosInstance;
   private strapiUrl: string;
   // In-memory cache for JWTs (will replace with Redis later)
   private jwtCache: Map<string, CachedJWT> = new Map();
   // Role-based API Tokens for /api/* endpoints (created in Strapi Admin → Settings → API Tokens)
-  private apiTokens: Map<string, string> = new Map([
-    ['admin', process.env.STRAPI_API_TOKEN_ADMIN || ''],
-    ['editor', process.env.STRAPI_API_TOKEN_EDITOR || ''],
-    ['author', process.env.STRAPI_API_TOKEN_AUTHOR || ''],
-    ['viewer', process.env.STRAPI_API_TOKEN_VIEWER || ''],
-  ]);
+  private apiTokens: Map<string, string> = new Map();
   private proxyUsers: ProxyUser[] = [
     { email: process.env.STRAPI_SUPER_ADMIN_PROXY_EMAIL, password: process.env.STRAPI_SUPER_ADMIN_PROXY_PASSWORD, role: 'Super Admin' },
 
@@ -35,6 +31,7 @@ export class ProxyUserService {
 
   constructor(
     private configService: ConfigService,
+    private keyVaultService: KeyVaultService,
     // @Inject('REDIS_CLIENT') private redis: Redis, // Commented out - will use Redis later
   ) {
     this.strapiUrl = this.configService.get<string>('STRAPI_URL') || 'http://localhost:1337';
@@ -44,6 +41,34 @@ export class ProxyUserService {
         'Content-Type': 'application/json',
       },
     });
+  }
+
+  async onModuleInit() {
+    // Initialize API tokens from Key Vault or .env
+    await this.initializeApiTokens();
+  }
+
+  private async initializeApiTokens() {
+    try {
+      const adminToken = await this.keyVaultService.getStrapiApiTokenAdmin();
+      const editorToken = await this.keyVaultService.getStrapiApiTokenEditor();
+      const authorToken = await this.keyVaultService.getStrapiApiTokenAuthor();
+      const viewerToken = await this.keyVaultService.getStrapiApiTokenViewer();
+
+      this.apiTokens.set('admin', adminToken || '');
+      this.apiTokens.set('editor', editorToken || '');
+      this.apiTokens.set('author', authorToken || '');
+      this.apiTokens.set('viewer', viewerToken || '');
+
+      this.logger.log('API tokens initialized from Key Vault or .env');
+    } catch (error) {
+      this.logger.error(`Failed to initialize API tokens: ${error.message}`);
+      // Fallback to empty tokens if initialization fails
+      this.apiTokens.set('admin', '');
+      this.apiTokens.set('editor', '');
+      this.apiTokens.set('author', '');
+      this.apiTokens.set('viewer', '');
+    }
   }
 
 

@@ -6,7 +6,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { AzureEasyAuthStrategy } from './strategies/azure-easy-auth.strategy';
+import { SessionService } from './services/session.service';
+import { AzureEasyAuthGuard } from './guards/azure-easy-auth.guard';
+import { CombinedAuthGuard } from './guards/combined-auth.guard';
 import { User } from './entities/user.entity';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -24,7 +29,15 @@ import { User } from './entities/user.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    AzureEasyAuthStrategy,
+    SessionService,
+    AzureEasyAuthGuard,
+    CombinedAuthGuard,
+    JwtAuthGuard
+  ],
+  exports: [AuthService, SessionService, AzureEasyAuthGuard, CombinedAuthGuard],
 })
 export class AuthModule {}

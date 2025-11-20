@@ -18,10 +18,18 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
+# Azure Key Vault Configuration (Optional)
+# If configured, the service will try to retrieve secrets from Azure Key Vault first,
+# then fallback to .env file if Key Vault is unavailable or secret not found.
+# Format: https://<vault-name>.vault.azure.net/
+AZURE_KEY_VAULT_URL=
+
 # Strapi Configuration (Required for proxy user system)
 STRAPI_URL=http://localhost:1337
 
 # Strapi Role-Based API Tokens (RECOMMENDED for /api/* endpoints in Strapi 5.x)
+# These tokens can be stored in Azure Key Vault or .env file.
+# If stored in Key Vault, use the same secret names as the environment variable names below.
 # Create in Strapi Admin Panel → Settings → API Tokens → Create new API Token
 # Set appropriate permissions for each role:
 #   - Admin: "Full access" token

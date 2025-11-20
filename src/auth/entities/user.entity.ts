@@ -35,6 +35,9 @@ export class User {
   @Column({ default: true })
   confirmed: boolean;
 
+  @Column({ type: 'varchar', nullable: true })
+  authKey: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

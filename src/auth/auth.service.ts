@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { User } from './entities/user.entity';
+import { SessionService } from './services/session.service';
 
 @Injectable()
 export class AuthService {
@@ -13,6 +14,7 @@ export class AuthService {
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     private jwtService: JwtService,
+    private sessionService: SessionService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -58,9 +60,19 @@ export class AuthService {
     // Remove password from response
     const { password, ...userWithoutPassword } = savedUser;
 
+    // Create session
+    const sessionId = this.sessionService.createSession({
+      userId: savedUser.id,
+      email: savedUser.email,
+      username: savedUser.username,
+      role: savedUser.role,
+      authType: 'jwt',
+    });
+
     return {
       jwt,
       user: userWithoutPassword,
+      sessionId,
     };
   }
 
@@ -100,9 +112,19 @@ export class AuthService {
     // Remove password from response
     const { password, ...userWithoutPassword } = user;
 
+    // Create session
+    const sessionId = this.sessionService.createSession({
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      authType: 'jwt',
+    });
+
     return {
       jwt,
       user: userWithoutPassword,
+      sessionId,
     };
   }
 
@@ -119,5 +141,17 @@ export class AuthService {
   async getAllUsers() {
     const users = await this.usersRepository.find();
     return users.map(({ password, ...user }) => user);
+  }
+
+  async logout(userId: string): Promise<{ message: string; sessionsDestroyed: number }> {
+    const sessionsDestroyed = this.sessionService.destroyUserSessions(userId);
+    return {
+      message: 'Logged out successfully',
+      sessionsDestroyed,
+    };
+  }
+
+  async getSessionStats() {
+    return this.sessionService.getSessionStats();
   }
 }
